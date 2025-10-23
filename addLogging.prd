@@ -1,0 +1,398 @@
+# PyBootManager - Boot Logging & Diagnostics
+## Brownfield Product Requirements Document
+### Adding Diagnostic Logging for Boot Entry Troubleshooting
+
+---
+
+| **Version** | 1.0 |
+|------------|-----|
+| **Date** | October 23, 2025 |
+| **Status** | Draft |
+| **Type** | Brownfield Enhancement |
+| **Parent PRD** | prd.md |
+
+---
+
+## 1. Executive Summary
+
+This brownfield PRD defines requirements for adding comprehensive logging and diagnostic capabilities to PyBootManager. The feature will capture and retain relevant system logs, application operations, and Windows Event Log data from the previous 5 boot sessions to help users diagnose why their boot entry selections did not work as expected.
+
+**Key Objectives:**
+- Track user operations and bcdedit commands with full context
+- Capture boot session data from the last 5 system boots
+- Collect relevant Windows Event Logs related to boot operations
+- Correlate user actions with actual boot results
+- Provide GUI for viewing diagnostics and exporting logs
+- Enable users to self-diagnose boot configuration issues
+
+---
+
+## 2. Problem Statement
+
+### 2.1 Current Limitations
+- No logging of user actions or bcdedit operations
+- No way to verify if boot selections actually worked
+- Cannot troubleshoot user-reported issues without diagnostic data
+- No correlation between operations and actual boot behavior
+- Print statements are not persisted for later analysis
+
+### 2.2 User Scenarios Requiring Diagnostics
+1. User sets "Boot Once" to Ubuntu but Windows boots instead
+2. User changes default OS but system continues booting old default
+3. Intermittent boot issues with no pattern visibility
+4. Support requests cannot be resolved without logs
+5. Users cannot identify permission or configuration conflicts
+
+---
+
+## 3. Technical Architecture
+
+### 3.1 New Components
+
+#### LogManager Class
+Central logging system for all application operations.
+
+**Responsibilities:**
+- Configure Python logging with rotating file handlers
+- Write structured logs in JSON Lines format
+- Capture all bcdedit operations with full command details
+- Log user actions from GUI with context
+- Provide log query and export interfaces
+
+**Key Methods:**
+```python
+log_user_action(action: str, details: dict)
+log_bcd_operation(command: str, args: list, result: dict)
+log_error(error: Exception, context: str)
+get_recent_logs(count: int) -> List[LogEntry]
+export_logs(file_path: str, session_count: int)
+```
+
+#### BootSessionTracker Class
+Tracks and correlates boot sessions with operations.
+
+**Responsibilities:**
+- Detect new boot sessions via system boot time comparison
+- Identify which boot entry was actually selected
+- Maintain last 5 boot session records with timestamps
+- Correlate "boot once" operations with actual boot results
+- Detect and flag mismatches between expected/actual boots
+
+**Key Methods:**
+```python
+detect_boot_session() -> BootSession
+get_boot_history(count: int) -> List[BootSession]
+correlate_operation_to_boot(op_id: str, session: BootSession)
+verify_boot_success(expected: str, actual: str) -> bool
+```
+
+#### WindowsEventLogCollector Class
+Collects Windows Event Logs related to boot operations.
+
+**Responsibilities:**
+- Query Windows Event Log via wevtutil or win32evtlog API
+- Filter for boot-related Event IDs: 12, 13, 27, 41, 1001, 6005, 6006, 6008, 6009
+- Extract BCD-related error events
+- Store event snapshots for last 5 boot sessions
+- Handle permission errors gracefully
+
+**Key Methods:**
+```python
+collect_boot_events(since_timestamp: float) -> List[EventLogEntry]
+get_bcd_error_events() -> List[EventLogEntry]
+get_system_boot_events(boot_count: int) -> List[EventLogEntry]
+```
+
+#### DiagnosticsViewer GUI Component
+User interface for viewing and exporting diagnostic logs.
+
+**Features:**
+- Boot session selector (last 5 sessions)
+- Timeline view showing operation → boot correlation
+- Detailed log viewer with filtering by category
+- Windows Event Log viewer integrated
+- Mismatch highlighting with diagnosis suggestions
+- Export functionality (ZIP with all logs)
+
+### 3.2 Modified Components
+
+**BCDManager:**
+- Add logging to all `_run_bcdedit()` calls
+- Log command, args, return code, stdout, stderr
+- Add operation IDs for correlation tracking
+
+**BackupManager:**
+- Log all backup/restore operations with results
+- Include file paths and metadata
+
+**GUI (PyBootManagerGUI):**
+- Log all user actions (button clicks, selections)
+- Add "View Diagnostics" button
+- Log application lifecycle events
+- Capture GUI exceptions
+
+---
+
+## 4. Data Models
+
+### 4.1 Log Entry Structure
+```json
+{
+  "timestamp": 1729707600.123,
+  "log_level": "INFO",
+  "category": "USER_ACTION",
+  "operation_id": "op_20251023_104000_001",
+  "boot_session_id": "boot_20251023_090000",
+  "message": "User clicked 'Boot Once' button",
+  "details": {
+    "selected_entry": "Ubuntu 22.04 LTS",
+    "entry_identifier": "{uuid}"
+  }
+}
+```
+
+### 4.2 Boot Session Structure
+```json
+{
+  "session_id": "boot_20251023_090000",
+  "boot_timestamp": 1729688400.0,
+  "previous_operations": [{
+    "operation_id": "op_20251022_180000_003",
+    "operation_type": "BOOT_ONCE",
+    "target_entry": "{ubuntu-guid}"
+  }],
+  "actual_boot_entry": "{windows-guid}",
+  "expected_boot_entry": "{ubuntu-guid}",
+  "boot_match_status": "MISMATCH",
+  "diagnosis": "Boot sequence may have been cleared"
+}
+```
+
+### 4.3 Storage Architecture
+```
+%LOCALAPPDATA%\PyBootManager\
+├── logs\
+│   ├── application.log         # Rotating (10MB, 3 files)
+│   ├── operations.jsonl        # JSON Lines format
+│   ├── boot_sessions.json      # Last 5 sessions
+│   └── event_logs\
+│       ├── boot_session_1.json
+│       └── ... (max 5 files)
+```
+
+---
+
+## 5. Functional Requirements
+
+### FR1: Application Operation Logging (CRITICAL)
+- Log all user actions within 100ms
+- Log all bcdedit commands with complete input/output
+- Include operation IDs for correlation
+- Log errors with full stack traces
+- Capture timestamps with millisecond precision
+
+### FR2: Boot Session Tracking (CRITICAL)
+- Detect new boot sessions within 30 seconds of app launch
+- Identify actual boot entry used
+- Maintain history of last 5 boot sessions
+- Correlate operations with subsequent boots
+- Flag mismatches between expected and actual boot entries
+
+### FR3: Windows Event Log Collection (HIGH)
+- Collect relevant Event IDs from System and Application logs
+- Complete collection within 5 seconds
+- Store events for last 5 boot sessions
+- Handle permission errors gracefully
+
+### FR4: Diagnostic Viewer GUI (HIGH)
+- Provide dedicated diagnostics window
+- View logs for each of last 5 boot sessions
+- Filter by category (USER_ACTION, BCD_OPERATION, ERROR)
+- Highlight mismatches with warnings
+- Search logs by keyword or timestamp
+
+### FR5: Log Export Functionality (MEDIUM)
+- Export diagnostics to ZIP file
+- Include app logs, operation logs, event logs, boot sessions
+- Complete export within 10 seconds
+- File size under 50 MB
+
+### FR6: Automatic Log Maintenance (MEDIUM)
+- Rotate log files automatically at size limits
+- Delete oldest boot session when exceeding 5 sessions
+- Warn user if storage exceeds 200 MB
+
+---
+
+## 6. Implementation Plan
+
+### Phase 1: Core Logging Infrastructure (Week 1)
+- Create LogManager class with rotating file handlers
+- Add JSON Lines format for structured logs
+- Integrate logging into BCDManager and GUI
+- Implement operation ID generation
+
+**Deliverables:** `src/log_manager.py`, modified `bcd_manager.py` and `gui.py`
+
+### Phase 2: Boot Session Tracking (Week 2)
+- Create BootSessionTracker class
+- Implement boot detection via system boot time
+- Build correlation logic for operations → boots
+- Add mismatch detection and diagnosis
+
+**Deliverables:** `src/boot_session_tracker.py`, boot session storage
+
+### Phase 3: Event Log Collection (Week 3)
+- Create WindowsEventLogCollector class
+- Implement Event Log queries (wevtutil or win32evtlog)
+- Filter for boot-related Event IDs
+- Implement per-session storage with rotation
+
+**Deliverables:** `src/event_log_collector.py`, event log storage
+
+### Phase 4: Diagnostics GUI (Week 4)
+- Design and implement DiagnosticsViewer window
+- Add boot session selector and timeline view
+- Implement log viewer with filtering
+- Add "View Diagnostics" button to main window
+
+**Deliverables:** `src/diagnostics_viewer.py`, GUI integration
+
+### Phase 5: Export and Polish (Week 5)
+- Implement ZIP export functionality
+- Add automatic log maintenance
+- Write documentation updates
+- Integration testing and bug fixes
+
+**Deliverables:** Export feature, updated docs, test suite
+
+---
+
+## 7. Technical Implementation
+
+### 7.1 Boot Session Detection
+```python
+import psutil
+from datetime import datetime
+
+def detect_new_boot_session():
+    current_boot_time = datetime.fromtimestamp(psutil.boot_time())
+    last_boot_time = load_last_recorded_boot_time()
+    
+    if current_boot_time > last_boot_time:
+        session_id = f"boot_{current_boot_time.strftime('%Y%m%d_%H%M%S')}"
+        save_boot_session(session_id, current_boot_time)
+        return True
+    return False
+```
+
+### 7.2 Event Log Collection
+```python
+import subprocess
+import json
+
+def collect_boot_events():
+    cmd = ['wevtutil', 'qe', 'System', '/c:50', '/rd:true', '/f:json',
+           '/q:*[System[Provider[@Name="Microsoft-Windows-Kernel-Boot"]]]']
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    events = json.loads(result.stdout)
+    return [e for e in events if e['System']['EventID'] in [12, 13, 27, 41]]
+```
+
+### 7.3 Operation Correlation
+```python
+def correlate_and_diagnose(operation, boot_session):
+    match = operation.target_entry == boot_session.actual_entry
+    
+    if not match:
+        diagnosis = "Unknown"
+        if 'access denied' in operation.stderr:
+            diagnosis = "Permission issue - check admin privileges"
+        elif boot_session.has_event(41):  # Unexpected shutdown
+            diagnosis = "System crashed - boot sequence lost"
+        
+        return {
+            'match': False,
+            'diagnosis': diagnosis,
+            'expected': operation.target_entry,
+            'actual': boot_session.actual_entry
+        }
+    return {'match': True}
+```
+
+---
+
+## 8. Dependencies
+
+### New Python Libraries
+- **psutil** (≥5.9.0) - System boot time detection
+- **pywin32** (optional) - Windows Event Log API access
+
+### Updated requirements.txt
+```
+psutil>=5.9.0
+```
+
+---
+
+## 9. Testing Strategy
+
+### Unit Tests
+- LogManager: rotation, filtering, query
+- BootSessionTracker: detection, correlation, mismatch
+- EventLogCollector: collection, filtering, error handling
+
+### Integration Tests
+- Successful boot once → MATCH correlation
+- Failed boot once → MISMATCH with diagnosis
+- Event log collection and storage
+- Export to ZIP with all logs
+
+### Performance Tests
+- Async logging does not block UI
+- Event collection <5 seconds
+- Diagnostics window loads <2 seconds
+- Export completes <10 seconds
+
+---
+
+## 10. Documentation Updates
+
+### README.md
+Add new "Diagnostic Logging" feature section and troubleshooting steps.
+
+### QUICKSTART.md
+Add "Troubleshooting with Diagnostics" use case with step-by-step guide.
+
+### New: DIAGNOSTICS_GUIDE.md
+Comprehensive guide on:
+- Understanding boot sessions
+- Reading diagnostic logs
+- Interpreting mismatches
+- Exporting logs for support
+
+---
+
+## 11. Success Metrics
+
+- 100% of bcdedit operations logged
+- Boot session detection accuracy: 100%
+- Mismatch detection accuracy: 100%
+- User-reported "boot didn't work" issues resolved with diagnostics: >80%
+- Export success rate: >99%
+- Performance: No UI lag from logging operations
+
+---
+
+## 12. Risks and Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| Event Log access denied | Graceful fallback, log permission error |
+| Log storage grows too large | Automatic rotation, 5-session limit, compression |
+| Performance impact | Async logging, buffered writes, lazy loading |
+| Boot detection fails | Fallback to manual session creation |
+
+---
+
+**End of Document**

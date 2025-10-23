@@ -23,6 +23,9 @@ Perfect for users with display sync issues, headless setups, or anyone who wants
 - **⚙️ Default Boot Configuration** - Set permanent default boot OS
 - **⏱️ Timeout Management** - Adjust boot menu timeout (0-999 seconds)
 - **💾 Backup & Restore** - Automatic backups before every change + manual backup creation
+- **📊 Diagnostic Logging** - Comprehensive logging and boot session tracking to troubleshoot issues
+- **🔍 Boot Verification** - Correlates operations with actual boot results to detect mismatches
+- **📝 Event Log Collection** - Captures Windows Event Logs related to boot operations
 - **🖥️ User-Friendly GUI** - Clean, modern interface built with tkinter
 - **🔒 Safe Operations** - Validates all changes and creates backups before modifications
 - **📋 Boot Entry Detection** - Automatically detects all available boot entries
@@ -31,6 +34,7 @@ Perfect for users with display sync issues, headless setups, or anyone who wants
 
 - **Operating System:** Windows 10 or Windows 11 (x64)
 - **Python Version:** Python 3.8 or higher
+- **Dependencies:** psutil>=5.9.0 (for boot session tracking)
 - **Administrator Privileges:** Required for boot configuration management
 - **Boot Modes:** Supports both UEFI and Legacy BIOS
 
@@ -47,7 +51,12 @@ Perfect for users with display sync issues, headless setups, or anyone who wants
 2. **Install Python 3.8+** (if not already installed)
    - Download from [python.org](https://www.python.org/downloads/)
 
-3. **Run the application:**
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Run the application:**
    ```bash
    python pybootmanager.py
    ```
@@ -96,20 +105,33 @@ pyinstaller --onefile --windowed --name PyBootManager pybootmanager.py
 2. Select a backup from the list
 3. Confirm restoration
 
+#### View Diagnostics
+1. Click **"View Diagnostics"**
+2. Select a boot session from the left panel
+3. Review operation logs, event logs, and timeline
+4. Export diagnostics if needed for troubleshooting
+
+See [DIAGNOSTICS_GUIDE.md](DIAGNOSTICS_GUIDE.md) for detailed troubleshooting information.
+
 ## 🏗️ Project Structure
 
 ```
 PyBootManager/
 ├── src/
-│   ├── __init__.py           # Package initialization
-│   ├── bcd_manager.py        # Boot Configuration Data management
-│   ├── backup_manager.py     # Backup/restore functionality
-│   ├── privilege_manager.py  # Admin privilege handling
-│   └── gui.py                # Main GUI application
-├── pybootmanager.py          # Main entry point
-├── requirements.txt          # Python dependencies
-├── prd.md                    # Product Requirements Document
-└── README.md                 # This file
+│   ├── __init__.py              # Package initialization
+│   ├── bcd_manager.py           # Boot Configuration Data management
+│   ├── backup_manager.py        # Backup/restore functionality
+│   ├── privilege_manager.py     # Admin privilege handling
+│   ├── gui.py                   # Main GUI application
+│   ├── log_manager.py           # Logging and diagnostics
+│   ├── boot_session_tracker.py  # Boot session tracking
+│   ├── event_log_collector.py   # Windows Event Log collection
+│   └── diagnostics_viewer.py    # Diagnostics GUI
+├── pybootmanager.py             # Main entry point
+├── requirements.txt             # Python dependencies
+├── prd.md                       # Product Requirements Document
+├── DIAGNOSTICS_GUIDE.md         # Diagnostics and troubleshooting guide
+└── README.md                    # This file
 ```
 
 ## 🔧 Technical Details
@@ -119,11 +141,20 @@ PyBootManager/
 - **BCDManager:** Interfaces with Windows Boot Manager via `bcdedit` command
 - **BackupManager:** Manages boot configuration backups using `bcdedit export/import`
 - **PrivilegeManager:** Ensures administrator privileges for boot modifications
+- **LogManager:** Central logging system with rotating file handlers
+- **BootSessionTracker:** Detects and tracks boot sessions for correlation
+- **WindowsEventLogCollector:** Collects boot-related Windows Event Logs
+- **DiagnosticsViewer:** GUI for viewing logs and troubleshooting
 - **GUI:** Tkinter-based user interface with modern styling
 
 ### Data Storage
 
-Backups are stored in: `%LOCALAPPDATA%\PyBootManager\backups\`
+- **Backups:** `%LOCALAPPDATA%\PyBootManager\backups\`
+- **Logs:** `%LOCALAPPDATA%\PyBootManager\logs\`
+  - `application.log` - General application log (10MB rotating)
+  - `operations.jsonl` - Structured operation logs (JSON Lines)
+  - `boot_sessions.json` - Boot session tracking (last 5 sessions)
+  - `event_logs/` - Windows Event Logs per session
 
 ### How It Works
 
@@ -155,6 +186,18 @@ Backups are stored in: `%LOCALAPPDATA%\PyBootManager\backups\`
 - Confirm administrator privileges
 - Check Windows Event Viewer for bcdedit errors
 - Restore from a recent backup if needed
+
+### "Boot Once" Didn't Work
+1. Open **View Diagnostics**
+2. Select the boot session after the operation
+3. Check the **Timeline & Correlation** tab for diagnosis
+4. Common causes:
+   - Fast Startup enabled (disable in Power Options)
+   - System crashed before boot (check Event Logs)
+   - UEFI firmware override (check BIOS settings)
+   - Permission denied (run as Administrator)
+
+For detailed troubleshooting, see [DIAGNOSTICS_GUIDE.md](DIAGNOSTICS_GUIDE.md).
 
 ## 🤝 Contributing
 
@@ -191,6 +234,10 @@ For issues, questions, or suggestions:
 - ✅ Timeout management
 - ✅ Backup and restore
 - ✅ GUI interface
+- ✅ Diagnostic logging
+- ✅ Boot session tracking
+- ✅ Event log collection
+- ✅ Operation correlation
 
 ### Version 2.0 (Planned)
 - 🔮 GRUB configuration support

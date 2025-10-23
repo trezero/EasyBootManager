@@ -13,6 +13,15 @@ from bcd_manager import BCDManager, BootEntry
 from backup_manager import BackupManager, BackupInfo
 from privilege_manager import PrivilegeManager
 
+try:
+    from log_manager import LogManager
+    from boot_session_tracker import BootSessionTracker
+    from event_log_collector import WindowsEventLogCollector
+    from diagnostics_viewer import DiagnosticsViewer
+    LOGGING_ENABLED = True
+except ImportError:
+    LOGGING_ENABLED = False
+
 
 class PyBootManagerGUI:
     """Main GUI application for PyBootManager."""
@@ -26,6 +35,39 @@ class PyBootManagerGUI:
         # Initialize managers
         self.bcd_manager = BCDManager()
         self.backup_manager = BackupManager()
+        
+        # Initialize logging and diagnostics
+        if LOGGING_ENABLED:
+            self.log_manager = LogManager()
+            self.session_tracker = BootSessionTracker()
+            self.event_collector = WindowsEventLogCollector()
+            self.diagnostics_viewer = None
+            
+            # Detect boot session and set up tracking
+            current_session = self.session_tracker.detect_boot_session()
+            if current_session:
+                self.log_manager.set_boot_session_id(current_session.session_id)
+                
+                # Collect event logs for this session
+                events = self.event_collector.collect_boot_events(
+                    since_timestamp=current_session.boot_timestamp,
+                    max_events=50
+                )
+                self.event_collector.save_events_for_session(current_session.session_id, events)
+                
+                # Update session with actual boot entry (will be done after refresh)
+                self.current_boot_session_id = current_session.session_id
+            else:
+                self.current_boot_session_id = None
+            
+            # Log application startup
+            self.log_manager.log_info("PyBootManager application started", category="APP_LIFECYCLE")
+        else:
+            self.log_manager = None
+            self.session_tracker = None
+            self.event_collector = None
+            self.diagnostics_viewer = None
+            self.current_boot_session_id = None
         
         # Variables
         self.selected_entry = None
@@ -206,7 +248,20 @@ class PyBootManagerGUI:
             fg="white",
             font=("Arial", 9, "bold")
         )
-        self.view_backups_btn.pack(side=tk.LEFT)
+        self.view_backups_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Add diagnostics button if logging is enabled
+        if LOGGING_ENABLED:
+            self.diagnostics_btn = tk.Button(
+                row2_frame,
+                text="View Diagnostics",
+                command=self.view_diagnostics,
+                width=15,
+                bg="#16a085",
+                fg="white",
+                font=("Arial", 9, "bold")
+            )
+            self.diagnostics_btn.pack(side=tk.LEFT)
         
         # Status Bar
         self.status_bar = tk.Label(
@@ -233,6 +288,10 @@ class PyBootManagerGUI:
     
     def refresh_boot_entries(self):
         """Refresh the boot entries list."""
+        # Log user action
+        if self.log_manager:
+            self.log_manager.log_user_action("Refreshed boot entries")
+        
         self.status_bar.config(text="Loading boot entries...")
         self.root.update()
         
@@ -257,6 +316,13 @@ class PyBootManagerGUI:
         self.default_label.config(text=f"Default: {default_desc}")
         self.timeout_label.config(text=f"Timeout: {timeout if timeout is not None else 'Unknown'} seconds")
         
+        # Update session tracker with actual boot entry (current default)
+        if self.session_tracker and default_id:
+            self.session_tracker.update_current_session(
+                actual_boot_entry=default_id,
+                expected_boot_entry=None  # Will be determined from operations
+            )
+        
         # Populate treeview
         for entry in self.boot_entries:
             status = "DEFAULT" if entry.is_default else ""
@@ -273,6 +339,16 @@ class PyBootManagerGUI:
         if not self.selected_entry:
             messagebox.showwarning("No Selection", "Please select a boot entry first.")
             return
+        
+        # Log user action
+        if self.log_manager:
+            self.log_manager.log_user_action(
+                "Clicked 'Boot Once' button",
+                details={
+                    'selected_entry': self.selected_entry.description,
+                    'entry_identifier': self.selected_entry.identifier
+                }
+            )
         
         # Confirm action
         result = messagebox.askyesno(
@@ -300,6 +376,16 @@ class PyBootManagerGUI:
         
         success = self.bcd_manager.set_boot_once(self.selected_entry.identifier)
         
+        # Track the operation for boot correlation
+        if success and self.session_tracker:
+            import time
+            self.session_tracker.correlate_operation_to_boot(
+                operation_id=f"boot_once_{int(time.time())}",
+                operation_type='BOOT_ONCE',
+                target_entry=self.selected_entry.identifier,
+                timestamp=time.time()
+            )
+        
         if success:
             messagebox.showinfo(
                 "Success",
@@ -316,6 +402,16 @@ class PyBootManagerGUI:
         if not self.selected_entry:
             messagebox.showwarning("No Selection", "Please select a boot entry first.")
             return
+        
+        # Log user action
+        if self.log_manager:
+            self.log_manager.log_user_action(
+                "Clicked 'Set Default' button",
+                details={
+                    'selected_entry': self.selected_entry.description,
+                    'entry_identifier': self.selected_entry.identifier
+                }
+            )
         
         # Confirm action
         result = messagebox.askyesno(
@@ -343,6 +439,16 @@ class PyBootManagerGUI:
         
         success = self.bcd_manager.set_default(self.selected_entry.identifier)
         
+        # Track the operation
+        if success and self.session_tracker:
+            import time
+            self.session_tracker.correlate_operation_to_boot(
+                operation_id=f"set_default_{int(time.time())}",
+                operation_type='SET_DEFAULT',
+                target_entry=self.selected_entry.identifier,
+                timestamp=time.time()
+            )
+        
         if success:
             messagebox.showinfo(
                 "Success",
@@ -356,6 +462,10 @@ class PyBootManagerGUI:
     
     def configure_timeout(self):
         """Configure boot menu timeout."""
+        # Log user action
+        if self.log_manager:
+            self.log_manager.log_user_action("Clicked 'Configure Timeout' button")
+        
         current_timeout = self.bcd_manager.get_timeout()
         
         # Ask for new timeout value
@@ -399,6 +509,10 @@ class PyBootManagerGUI:
     
     def create_backup(self):
         """Create a manual backup."""
+        # Log user action
+        if self.log_manager:
+            self.log_manager.log_user_action("Clicked 'Create Backup' button")
+        
         # Ask for backup name
         name = simpledialog.askstring(
             "Create Backup",
@@ -428,6 +542,10 @@ class PyBootManagerGUI:
     
     def restore_backup(self):
         """Restore from a backup."""
+        # Log user action
+        if self.log_manager:
+            self.log_manager.log_user_action("Clicked 'Restore Backup' button")
+        
         backups = self.backup_manager.list_backups()
         
         if not backups:
@@ -515,6 +633,10 @@ class PyBootManagerGUI:
     
     def view_backups(self):
         """View all available backups."""
+        # Log user action
+        if self.log_manager:
+            self.log_manager.log_user_action("Clicked 'View Backups' button")
+        
         backups = self.backup_manager.list_backups()
         
         if not backups:
@@ -559,6 +681,25 @@ class PyBootManagerGUI:
             )
         
         tk.Button(dialog, text="Close", command=dialog.destroy, width=15).pack(pady=10)
+    
+    def view_diagnostics(self):
+        """Open the diagnostics viewer window."""
+        if not LOGGING_ENABLED:
+            messagebox.showinfo(
+                "Feature Not Available",
+                "Diagnostics feature is not available."
+            )
+            return
+        
+        # Log user action
+        if self.log_manager:
+            self.log_manager.log_user_action("Opened diagnostics viewer")
+        
+        # Create or show diagnostics viewer
+        if self.diagnostics_viewer is None:
+            self.diagnostics_viewer = DiagnosticsViewer(self.root)
+        
+        self.diagnostics_viewer.show()
 
 
 def main():

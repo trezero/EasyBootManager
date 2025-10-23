@@ -5,6 +5,12 @@ import subprocess
 import re
 from typing import List, Dict, Optional
 
+try:
+    from log_manager import LogManager
+    LOGGING_ENABLED = True
+except ImportError:
+    LOGGING_ENABLED = False
+
 
 class BootEntry:
     """Represents a single boot entry in the BCD store."""
@@ -26,6 +32,12 @@ class BCDManager:
         self.boot_entries = []
         self.current_default = None
         self.timeout = None
+        
+        # Initialize logging
+        if LOGGING_ENABLED:
+            self.log_manager = LogManager()
+        else:
+            self.log_manager = None
     
     def _run_bcdedit(self, args: List[str]) -> Optional[str]:
         """
@@ -48,6 +60,18 @@ class BCDManager:
                 check=False
             )
             
+            # Log the operation
+            if self.log_manager:
+                self.log_manager.log_bcd_operation(
+                    command='bcdedit',
+                    args=args,
+                    result={
+                        'returncode': result.returncode,
+                        'stdout': result.stdout,
+                        'stderr': result.stderr
+                    }
+                )
+            
             if result.returncode == 0:
                 return result.stdout
             else:
@@ -55,6 +79,8 @@ class BCDManager:
                 return None
         except Exception as e:
             print(f"Error running bcdedit: {e}")
+            if self.log_manager:
+                self.log_manager.log_error(e, "Running bcdedit command", {'args': args})
             return None
     
     def get_boot_entries(self) -> List[BootEntry]:

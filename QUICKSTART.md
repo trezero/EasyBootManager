@@ -5,6 +5,7 @@
 ### Step 1: Verify Requirements
 - ✅ Windows 10 or Windows 11
 - ✅ Python 3.8 or higher installed
+- ✅ Required dependencies: `pip install -r requirements.txt`
 - ✅ Administrator access
 
 ### Step 2: Run the Application
@@ -50,6 +51,12 @@
 - View backups: Click **"View Backups"**
 - Restore: Click **"Restore Backup"** → Select backup
 
+#### 📊 Diagnostics (Troubleshooting)
+- Click **"View Diagnostics"** to open diagnostics viewer
+- Review operation logs, event logs, and boot session timeline
+- Export logs for troubleshooting: Click **"Export All"**
+- See detailed guide: [DIAGNOSTICS_GUIDE.md](DIAGNOSTICS_GUIDE.md)
+
 ## 🎯 Common Use Cases
 
 ### Use Case 1: Switch to Linux for Development
@@ -89,6 +96,20 @@ Boot menu now shows for only 3 seconds.
 ```
 Boot configuration restored to selected state.
 
+### Use Case 5: Troubleshoot "Boot Once" Not Working
+```
+1. Open PyBootManager (as admin)
+2. Click "View Diagnostics"
+3. Select the boot session after your "Boot Once" attempt
+4. Go to "Timeline & Correlation" tab
+5. Check Match Status and Diagnosis
+6. Common issues:
+   - Fast Startup enabled (disable in Power Options)
+   - Permission denied (check Operation Logs)
+   - System crashed (check Event Logs for Event ID 41)
+```
+Diagnostics help identify why boot didn't work as expected.
+
 ## ⚠️ Important Tips
 
 ### ✅ DO:
@@ -117,8 +138,21 @@ Boot configuration restored to selected state.
 ### Problem: Changes Don't Apply
 **Solution:**
 - Verify administrator privileges
-- Check Windows Event Viewer for bcdedit errors
+- Open **View Diagnostics** to check operation logs
+- Look for ERROR entries in Operation Logs tab
+- Check BCD operation return codes (should be 0 for success)
 - Try restoring from backup
+
+### Problem: "Boot Once" Doesn't Work
+**Solution:**
+1. Click **"View Diagnostics"**
+2. Select the boot session in question
+3. Review **Timeline & Correlation** tab
+4. Check diagnosis for specific cause:
+   - **Fast Startup**: Disable in Control Panel → Power Options
+   - **Permission Denied**: Run as Administrator
+   - **System Crash**: Check Event Logs for Event ID 41
+   - **UEFI Override**: Check BIOS boot settings
 
 ### Problem: Application Won't Start
 **Solution:**
@@ -129,6 +163,7 @@ Boot configuration restored to selected state.
 ## 📚 Learn More
 
 - **Full Documentation:** [README.md](README.md)
+- **Diagnostics & Troubleshooting:** [DIAGNOSTICS_GUIDE.md](DIAGNOSTICS_GUIDE.md)
 - **Technical Details:** [prd.md](prd.md)
 - **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Changes:** [CHANGELOG.md](CHANGELOG.md)
@@ -148,6 +183,14 @@ Day 2 - Tuesday (Need Linux for development)
 Day 3 - Wednesday (Mostly Linux this week)
 → PyBootManager → Select Linux → Set Default
 → Now Linux boots by default ✅
+
+Day 4 - Thursday (Troubleshooting boot issue)
+→ Notice Linux didn't boot as expected
+→ PyBootManager → View Diagnostics
+→ Check boot session timeline
+→ Discover Fast Startup was enabled
+→ Disable Fast Startup in Power Options
+→ Problem solved ✅
 
 Day 7 - Sunday (Back to Windows next week)
 → PyBootManager → Select Windows → Set Default

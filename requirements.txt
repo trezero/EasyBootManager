@@ -1,13 +1,16 @@
 # PyBootManager Requirements
 # Python 3.8 or higher required
 
-# No external dependencies required for basic functionality
-# All features use Python standard library:
+# Core dependencies for logging and diagnostics
+psutil>=5.9.0  # System boot time detection and boot session tracking
+
+# All other features use Python standard library:
 # - tkinter (GUI)
 # - subprocess (bcdedit commands)
 # - ctypes (Windows API for privilege elevation)
-# - json (backup metadata)
+# - json (backup metadata and log storage)
 # - re (parsing bcdedit output)
+# - logging (application and operation logging)
 
 # Optional dependencies for building executable:
 # pyinstaller>=5.0  # For creating standalone executable

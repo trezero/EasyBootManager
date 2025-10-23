@@ -9,6 +9,12 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from pathlib import Path
 
+try:
+    from log_manager import LogManager
+    LOGGING_ENABLED = True
+except ImportError:
+    LOGGING_ENABLED = False
+
 
 class BackupInfo:
     """Represents backup metadata."""
@@ -65,6 +71,12 @@ class BackupManager:
         
         # Load existing backups
         self.backups = self._load_metadata()
+        
+        # Initialize logging
+        if LOGGING_ENABLED:
+            self.log_manager = LogManager()
+        else:
+            self.log_manager = None
     
     def _load_metadata(self) -> List[BackupInfo]:
         """Load backup metadata from JSON file."""
@@ -135,11 +147,30 @@ class BackupManager:
             self.backups.append(backup_info)
             self._save_metadata()
             
+            # Log successful backup
+            if self.log_manager:
+                self.log_manager.log_backup_operation(
+                    operation_type='create',
+                    backup_name=name,
+                    success=True,
+                    details={'file_path': backup_file, 'description': description}
+                )
+            
             print(f"Backup created: {name}")
             return backup_info
             
         except Exception as e:
             print(f"Error creating backup: {e}")
+            
+            # Log failed backup
+            if self.log_manager:
+                self.log_manager.log_backup_operation(
+                    operation_type='create',
+                    backup_name=name or 'unknown',
+                    success=False,
+                    details={'error': str(e)}
+                )
+            
             return None
     
     def restore_backup(self, backup_name: str) -> bool:
@@ -181,13 +212,42 @@ class BackupManager:
             
             if result.returncode != 0:
                 print(f"Backup restore failed: {result.stderr}")
+                
+                # Log failed restore
+                if self.log_manager:
+                    self.log_manager.log_backup_operation(
+                        operation_type='restore',
+                        backup_name=backup_name,
+                        success=False,
+                        details={'file_path': backup.file_path, 'error': result.stderr}
+                    )
+                
                 return False
+            
+            # Log successful restore
+            if self.log_manager:
+                self.log_manager.log_backup_operation(
+                    operation_type='restore',
+                    backup_name=backup_name,
+                    success=True,
+                    details={'file_path': backup.file_path}
+                )
             
             print(f"Backup restored: {backup_name}")
             return True
             
         except Exception as e:
             print(f"Error restoring backup: {e}")
+            
+            # Log error
+            if self.log_manager:
+                self.log_manager.log_backup_operation(
+                    operation_type='restore',
+                    backup_name=backup_name,
+                    success=False,
+                    details={'error': str(e)}
+                )
+            
             return False
     
     def list_backups(self) -> List[BackupInfo]:
@@ -229,11 +289,30 @@ class BackupManager:
             self.backups.remove(backup)
             self._save_metadata()
             
+            # Log deletion
+            if self.log_manager:
+                self.log_manager.log_backup_operation(
+                    operation_type='delete',
+                    backup_name=backup_name,
+                    success=True,
+                    details={'file_path': backup.file_path}
+                )
+            
             print(f"Backup deleted: {backup_name}")
             return True
             
         except Exception as e:
             print(f"Error deleting backup: {e}")
+            
+            # Log error
+            if self.log_manager:
+                self.log_manager.log_backup_operation(
+                    operation_type='delete',
+                    backup_name=backup_name,
+                    success=False,
+                    details={'error': str(e)}
+                )
+            
             return False
     
     def create_auto_backup(self) -> Optional[BackupInfo]:
