@@ -1,0 +1,13 @@
+# PyBootManager Requirements
+# Python 3.8 or higher required
+
+# No external dependencies required for basic functionality
+# All features use Python standard library:
+# - tkinter (GUI)
+# - subprocess (bcdedit commands)
+# - ctypes (Windows API for privilege elevation)
+# - json (backup metadata)
+# - re (parsing bcdedit output)
+
+# Optional dependencies for building executable:
+# pyinstaller>=5.0  # For creating standalone executable
